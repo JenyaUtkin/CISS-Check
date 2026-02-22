@@ -1,0 +1,30 @@
+{
+  "name": "ciss-check-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for CISS eye health screening",
+  "main": "dist/bot.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/bot.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "typescript",
+    "ciss"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.7.2",
+    "dotenv": "^16.4.7",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.8",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.2"
+  }
+}
