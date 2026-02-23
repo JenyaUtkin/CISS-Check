@@ -1,5 +1,4 @@
 import { Context, Telegraf } from "telegraf";
-import http from "node:http";
 import { config } from "./config";
 import {
   handleContactInput,
@@ -68,16 +67,6 @@ bot
   .catch((error) => {
     console.error("Failed to launch bot:", error);
     process.exit(1);
-  });
-
-const port = Number(process.env.PORT || 3000);
-http
-  .createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("OK");
-  })
-  .listen(port, () => {
-    console.log(`Health server listening on port ${port}`);
   });
 
 process.once("SIGINT", () => bot.stop("SIGINT"));

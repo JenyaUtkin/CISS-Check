@@ -208,7 +208,7 @@ export async function handleTextInput(ctx: Context): Promise<void> {
   if (text === START_TEST_BUTTON) {
     const profile = getUserProfile(telegramId);
     if (!profile) {
-      await ctx.reply("Сначала заполните профиль через команду /start");
+      await ctx.reply("Сначала заполните профиль через команду /start.");
       return;
     }
 
