@@ -5,6 +5,14 @@ export function answerLabelByScore(score: number): string {
   return option?.label || "Неизвестно";
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function calculateAge(birthDate: string): number | null {
   const [dayRaw, monthRaw, yearRaw] = birthDate.split(".");
   const day = Number(dayRaw);
@@ -34,24 +42,24 @@ export function buildDoctorsGroupMessage(params: {
   answers: number[];
 }): string {
   const age = calculateAge(params.birthDate);
-  const usernameSuffix = params.username ? ` (@${params.username})` : "";
+  const usernameSuffix = params.username ? ` (@${escapeHtml(params.username)})` : "";
   const birthDateWithAge = age === null ? params.birthDate : `${params.birthDate} (${age} лет)`;
-  const phoneText = params.phone || "не указан";
+  const phoneText = params.phone ? escapeHtml(params.phone) : "не указан";
 
   const details = TEST_QUESTIONS.map((question, index) => {
     const score = params.answers[index];
     const label = answerLabelByScore(score);
-    return `${index + 1}. ${question} — ${label}(${score})`;
+    return `${index + 1}. ${escapeHtml(question)} — <b>${escapeHtml(label)}(${score})</b>`;
   }).join("\n");
 
   return [
     "📋 Новая анкета пациента",
     "",
-    `👤 ФИО: ${params.fullName}${usernameSuffix}`,
-    `🎂 Дата рождения: ${birthDateWithAge}`,
+    `👤 ФИО: ${escapeHtml(params.fullName)}${usernameSuffix}`,
+    `🎂 Дата рождения: ${escapeHtml(birthDateWithAge)}`,
     `📞 Телефон: ${phoneText}`,
     "",
-    `📊 Результат теста: ${params.score} баллов`,
+    `📊 Результат теста: <b>${params.score} баллов</b>`,
     "",
     "📝 Детали ответов:",
     details

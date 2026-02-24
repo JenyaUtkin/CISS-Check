@@ -18,6 +18,9 @@ bot.start(async (ctx) => {
 });
 
 bot.on("text", async (ctx) => {
+  if (ctx.message.text.trim().startsWith("/")) {
+    return;
+  }
   await handleTextInput(ctx);
 });
 

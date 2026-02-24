@@ -3,7 +3,7 @@ import { getOrCreateSession, resetTestProgress, updateSession } from "../models/
 import { deleteUserProfile, getUserProfile, upsertUserProfile } from "../models/userModel";
 import { UserState } from "../types";
 import { RETAKE_TEST_BUTTON, START_TEST_BUTTON } from "../utils/constants";
-import { isValidBirthDate } from "../utils/validation";
+import { isValidBirthDate, isValidPatientName, isValidPhone, normalizePhone } from "../utils/validation";
 import { continueExistingTest, sendMainMenu, startNewTest } from "./testController";
 
 function getTelegramId(ctx: Context): number | null {
@@ -21,31 +21,35 @@ async function askNamePermission(ctx: Context): Promise<void> {
   await ctx.reply(
     "Разрешаете использовать имя из вашего Telegram-профиля?",
     Markup.inlineKeyboard([
-      [Markup.button.callback("Да, использовать имя из профиля", "name:tg")],
-      [Markup.button.callback("Нет, ввести вручную", "name:manual")]
+      [Markup.button.callback("Да, я пациент, использовать имя из профиля", "name:tg")],
+      [Markup.button.callback("Нет, введу имя пациента вручную", "name:manual")]
     ])
   );
 }
 
 async function askBirthDate(ctx: Context): Promise<void> {
-  await ctx.reply("Введите вашу дату рождения в формате ДД.ММ.ГГГГ (например, 01.01.1990):");
+  await ctx.reply("Введите дату рождения пациента ДД.ММ.ГГГГ (например, 01.01.1990):");
 }
 
 async function askPhoneConsent(ctx: Context): Promise<void> {
   await ctx.reply(
-    "Хотите указать номер телефона для анкеты?",
+    "Указать номер телефона для связи",
     Markup.inlineKeyboard([
-      [Markup.button.callback("Да, указать телефон", "phone:yes")],
-      [Markup.button.callback("Нет, продолжить без телефона", "phone:no")]
+      [Markup.button.callback("Взять номер из Telegram", "phone:tg")],
+      [Markup.button.callback("Ввести номер вручную", "phone:manual")]
     ])
   );
 }
 
 async function askPhoneContact(ctx: Context): Promise<void> {
   await ctx.reply(
-    "Нажмите кнопку ниже, чтобы отправить номер телефона.",
+    "Нажмите кнопку ниже, чтобы отправить номер телефона из Telegram.",
     Markup.keyboard([Markup.button.contactRequest("📱 Отправить телефон")]).resize()
   );
+}
+
+async function askPhoneManual(ctx: Context): Promise<void> {
+  await ctx.reply("Введите номер телефона вручную (например, +79991234567):", Markup.removeKeyboard());
 }
 
 export async function handleStartCommand(ctx: Context): Promise<void> {
@@ -94,8 +98,8 @@ export async function handleProfileSetupCallback(ctx: Context, action: string): 
     const name = fullNameFromTelegram(ctx);
     if (!name) {
       updateSession(telegramId, { state: UserState.AWAITING_MANUAL_NAME, tempFullName: null });
-      await ctx.answerCbQuery("Имя не найдено в Telegram-профиле");
-      await ctx.reply("Введите ваше ФИО полностью (например, Иванов Иван Иванович):");
+      await ctx.answerCbQuery("Имя в профиле не найдено");
+      await ctx.reply("Введите ФИ пациента (например, Иванов Иван). Отчество при наличии можно добавить:");
       return;
     }
 
@@ -114,7 +118,7 @@ export async function handleProfileSetupCallback(ctx: Context, action: string): 
       tempFullName: null
     });
     await ctx.answerCbQuery();
-    await ctx.reply("Введите ваше ФИО полностью (например, Иванов Иван Иванович):");
+    await ctx.reply("Введите ФИ пациента (например, Иванов Иван). Отчество при наличии можно добавить:");
   }
 }
 
@@ -149,18 +153,17 @@ export async function handlePhoneDecisionCallback(ctx: Context, action: string):
     return;
   }
 
-  if (action === "yes") {
+  if (action === "tg") {
     updateSession(telegramId, { state: UserState.AWAITING_PHONE_CONTACT });
     await ctx.answerCbQuery();
     await askPhoneContact(ctx);
     return;
   }
 
-  if (action === "no") {
-    updateSession(telegramId, { state: UserState.READY_FOR_TEST });
+  if (action === "manual") {
+    updateSession(telegramId, { state: UserState.AWAITING_PHONE_MANUAL });
     await ctx.answerCbQuery();
-    await ctx.reply("Профиль успешно сохранен.", Markup.removeKeyboard());
-    await sendMainMenu(ctx);
+    await askPhoneManual(ctx);
   }
 }
 
@@ -186,7 +189,7 @@ export async function handleContactInput(ctx: Context): Promise<void> {
     fullName: profile.fullName,
     birthDate: profile.birthDate,
     username: profile.username,
-    phone: ctx.message.contact.phone_number
+    phone: normalizePhone(ctx.message.contact.phone_number)
   });
 
   updateSession(telegramId, { state: UserState.READY_FOR_TEST });
@@ -232,8 +235,8 @@ export async function handleTextInput(ctx: Context): Promise<void> {
 
   const session = getOrCreateSession(telegramId);
   if (session.state === UserState.AWAITING_MANUAL_NAME) {
-    if (text.length < 5) {
-      await ctx.reply("Пожалуйста, введите корректное ФИО полностью.");
+    if (!isValidPatientName(text)) {
+      await ctx.reply("Введите минимум фамилию и имя (например, Иванов Иван). Отчество — по желанию.");
       return;
     }
 
@@ -252,9 +255,9 @@ export async function handleTextInput(ctx: Context): Promise<void> {
     }
 
     const fullName = session.tempFullName || fullNameFromTelegram(ctx);
-    if (!fullName) {
+    if (!fullName.trim()) {
       updateSession(telegramId, { state: UserState.AWAITING_MANUAL_NAME, tempFullName: null });
-      await ctx.reply("Не удалось определить ФИО. Введите ваше ФИО полностью:");
+      await ctx.reply("Не удалось определить имя пациента. Введите минимум фамилию и имя:");
       return;
     }
 
@@ -281,8 +284,34 @@ export async function handleTextInput(ctx: Context): Promise<void> {
     return;
   }
 
+  if (session.state === UserState.AWAITING_PHONE_MANUAL) {
+    if (!isValidPhone(text)) {
+      await ctx.reply("Некорректный номер. Введите телефон в формате +79991234567 или 89991234567.");
+      return;
+    }
+
+    const profile = getUserProfile(telegramId);
+    if (!profile) {
+      await ctx.reply("Профиль не найден. Нажмите /start");
+      return;
+    }
+
+    upsertUserProfile({
+      telegramId,
+      fullName: profile.fullName,
+      birthDate: profile.birthDate,
+      username: profile.username,
+      phone: normalizePhone(text)
+    });
+
+    updateSession(telegramId, { state: UserState.READY_FOR_TEST });
+    await ctx.reply("Телефон сохранен.", Markup.removeKeyboard());
+    await sendMainMenu(ctx);
+    return;
+  }
+
   if (session.state === UserState.AWAITING_PHONE_DECISION) {
-    await ctx.reply("Выберите вариант кнопкой: указать телефон или продолжить без него.");
+    await ctx.reply("Выберите вариант кнопкой: взять номер из Telegram или ввести вручную.");
     return;
   }
 

@@ -10,17 +10,20 @@ function getTelegramId(ctx: Context): number | null {
   return ctx.from?.id || null;
 }
 
-function buildAnswerKeyboard() {
+function buildAnswerKeyboard(questionIndex: number, selectedScore?: number) {
   return Markup.inlineKeyboard(
     ANSWER_OPTIONS.map((option) => [
-      Markup.button.callback(`${option.label} (${option.score})`, `answer:${option.score}`)
+      Markup.button.callback(
+        option.score === selectedScore ? `✅ ${option.label} (${option.score})` : `${option.label} (${option.score})`,
+        `answer:${questionIndex}:${option.score}`
+      )
     ])
   );
 }
 
 export async function sendMainMenu(ctx: Context): Promise<void> {
   await ctx.reply(
-    "Пожалуйста, ответьте на вопросы о самочувствии ваших глаз при чтении и работе вблизи.",
+    "Пожалуйста, ответьте на вопросы о самочувствии глаз при чтении и работе вблизи. (Нажмите «пройти тест» ниже).",
     Markup.keyboard([[START_TEST_BUTTON]]).resize()
   );
 }
@@ -34,7 +37,10 @@ export async function sendRetakeMenu(ctx: Context): Promise<void> {
 
 async function askQuestion(ctx: Context, questionIndex: number): Promise<void> {
   const questionText = TEST_QUESTIONS[questionIndex];
-  await ctx.reply(`Вопрос ${questionIndex + 1}/${TEST_QUESTIONS.length}\n\n${questionText}`, buildAnswerKeyboard());
+  await ctx.reply(
+    `Вопрос ${questionIndex + 1}/${TEST_QUESTIONS.length}\n\n${questionText}`,
+    buildAnswerKeyboard(questionIndex)
+  );
 }
 
 export async function startNewTest(ctx: Context): Promise<void> {
@@ -80,7 +86,10 @@ export async function handleAnswerCallback(ctx: Context, scoreRaw: string): Prom
     return;
   }
 
-  const score = Number(scoreRaw);
+  const parts = scoreRaw.split(":");
+  const hasQuestionIndex = parts.length === 2;
+  const questionIndexFromPayload = hasQuestionIndex ? Number(parts[0]) : null;
+  const score = Number(hasQuestionIndex ? parts[1] : parts[0]);
   if (!Number.isInteger(score) || score < 0 || score > 4) {
     await ctx.answerCbQuery("Некорректный вариант ответа");
     return;
@@ -90,6 +99,48 @@ export async function handleAnswerCallback(ctx: Context, scoreRaw: string): Prom
   if (session.state !== UserState.IN_TEST) {
     await ctx.answerCbQuery("Тест не запущен");
     return;
+  }
+
+  if (questionIndexFromPayload === null || !Number.isInteger(questionIndexFromPayload)) {
+    await ctx.answerCbQuery("Некорректный вопрос");
+    return;
+  }
+
+  if (questionIndexFromPayload > session.currentQuestion) {
+    await ctx.answerCbQuery("Сначала ответьте на текущий вопрос");
+    return;
+  }
+
+  const currentQuestionIndex = session.currentQuestion;
+
+  if (questionIndexFromPayload < currentQuestionIndex) {
+    if (questionIndexFromPayload >= session.answers.length) {
+      await ctx.answerCbQuery("Ответ для этого вопроса еще не задан");
+      return;
+    }
+
+    const updatedAnswers = [...session.answers];
+    updatedAnswers[questionIndexFromPayload] = score;
+    updateSession(telegramId, {
+      answers: updatedAnswers,
+      state: UserState.IN_TEST
+    });
+
+    try {
+      await ctx.editMessageReplyMarkup(buildAnswerKeyboard(questionIndexFromPayload, score).reply_markup);
+    } catch (error) {
+      console.warn("Could not update previous question keyboard:", error);
+    }
+
+    await ctx.answerCbQuery("Ответ обновлен");
+    return;
+  }
+
+  try {
+    await ctx.editMessageReplyMarkup(buildAnswerKeyboard(currentQuestionIndex, score).reply_markup);
+  } catch (error) {
+    // If message was already edited or unavailable, continue flow without failing the answer.
+    console.warn("Could not update answered question keyboard:", error);
   }
 
   const nextAnswers = [...session.answers, score];
@@ -137,7 +188,7 @@ export async function handleAnswerCallback(ctx: Context, scoreRaw: string): Prom
   });
 
   try {
-    await ctx.telegram.sendMessage(config.doctorsGroupId, report);
+    await ctx.telegram.sendMessage(config.doctorsGroupId, report, { parse_mode: "HTML" });
   } catch (error) {
     console.error("Failed to send report to doctors group:", error);
     await ctx.reply("Результат сохранен, но не удалось отправить его в группу врачей.");
