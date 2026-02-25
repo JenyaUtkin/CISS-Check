@@ -3,7 +3,7 @@ import { getOrCreateSession, resetTestProgress, updateSession } from "../models/
 import { deleteUserProfile, getUserProfile, upsertUserProfile } from "../models/userModel";
 import { UserState } from "../types";
 import { RETAKE_TEST_BUTTON, START_TEST_BUTTON } from "../utils/constants";
-import { isValidBirthDate, isValidPatientName, isValidPhone, normalizePhone } from "../utils/validation";
+import { isValidBirthDate, isValidPatientName, normalizePhone } from "../utils/validation";
 import { continueExistingTest, sendMainMenu, startNewTest } from "./testController";
 
 function getTelegramId(ctx: Context): number | null {
@@ -33,10 +33,11 @@ async function askBirthDate(ctx: Context): Promise<void> {
 
 async function askPhoneConsent(ctx: Context): Promise<void> {
   await ctx.reply(
-    "Указать номер телефона для связи",
+    "Хотите указать номер телефона для анкеты?",
     Markup.inlineKeyboard([
       [Markup.button.callback("Взять номер из Telegram", "phone:tg")],
-      [Markup.button.callback("Ввести номер вручную", "phone:manual")]
+      [Markup.button.callback("Ввести номер вручную", "phone:manual")],
+      [Markup.button.callback("Пропустить", "phone:skip")]
     ])
   );
 }
@@ -164,6 +165,14 @@ export async function handlePhoneDecisionCallback(ctx: Context, action: string):
     updateSession(telegramId, { state: UserState.AWAITING_PHONE_MANUAL });
     await ctx.answerCbQuery();
     await askPhoneManual(ctx);
+    return;
+  }
+
+  if (action === "skip") {
+    updateSession(telegramId, { state: UserState.READY_FOR_TEST });
+    await ctx.answerCbQuery("Пропускаем номер телефона");
+    await ctx.reply("Продолжаем без номера телефона.");
+    await sendMainMenu(ctx);
   }
 }
 
@@ -285,11 +294,6 @@ export async function handleTextInput(ctx: Context): Promise<void> {
   }
 
   if (session.state === UserState.AWAITING_PHONE_MANUAL) {
-    if (!isValidPhone(text)) {
-      await ctx.reply("Некорректный номер. Введите телефон в формате +79991234567 или 89991234567.");
-      return;
-    }
-
     const profile = getUserProfile(telegramId);
     if (!profile) {
       await ctx.reply("Профиль не найден. Нажмите /start");
@@ -311,7 +315,7 @@ export async function handleTextInput(ctx: Context): Promise<void> {
   }
 
   if (session.state === UserState.AWAITING_PHONE_DECISION) {
-    await ctx.reply("Выберите вариант кнопкой: взять номер из Telegram или ввести вручную.");
+    await ctx.reply("Выберите вариант кнопкой: взять номер из Telegram, ввести вручную или пропустить.");
     return;
   }
 
