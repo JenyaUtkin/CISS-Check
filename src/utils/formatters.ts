@@ -1,4 +1,5 @@
 import { ANSWER_OPTIONS, TEST_QUESTIONS } from "./constants";
+import { formatScoreWithBallWord, getAgeFromBirthDate } from "./ciss";
 
 export function answerLabelByScore(score: number): string {
   const option = ANSWER_OPTIONS.find((item) => item.score === score);
@@ -13,25 +14,6 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function calculateAge(birthDate: string): number | null {
-  const [dayRaw, monthRaw, yearRaw] = birthDate.split(".");
-  const day = Number(dayRaw);
-  const month = Number(monthRaw);
-  const year = Number(yearRaw);
-  if (!day || !month || !year) {
-    return null;
-  }
-
-  const today = new Date();
-  let age = today.getFullYear() - year;
-  const monthDiff = today.getMonth() + 1 - month;
-  const dayDiff = today.getDate() - day;
-  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-    age -= 1;
-  }
-  return age >= 0 ? age : null;
-}
-
 export function buildDoctorsGroupMessage(params: {
   fullName: string;
   birthDate: string;
@@ -41,7 +23,7 @@ export function buildDoctorsGroupMessage(params: {
   score: number;
   answers: number[];
 }): string {
-  const age = calculateAge(params.birthDate);
+  const age = getAgeFromBirthDate(params.birthDate);
   const usernameSuffix = params.username ? ` (@${escapeHtml(params.username)})` : "";
   const birthDateWithAge = age === null ? params.birthDate : `${params.birthDate} (${age} лет)`;
   const phoneText = params.phone ? escapeHtml(params.phone) : "не указан";
@@ -59,7 +41,7 @@ export function buildDoctorsGroupMessage(params: {
     `🎂 Дата рождения: ${escapeHtml(birthDateWithAge)}`,
     `📞 Телефон: ${phoneText}`,
     "",
-    `📊 Результат теста: <b>${params.score} баллов</b>`,
+    `📊 Результат теста: <b>${escapeHtml(formatScoreWithBallWord(params.score))}</b>`,
     "",
     "📝 Детали ответов:",
     details

@@ -4,6 +4,7 @@ import { getOrCreateSession, resetTestProgress, updateSession } from "../models/
 import { getUserProfile, saveTestResult } from "../models/userModel";
 import { UserState } from "../types";
 import { ANSWER_OPTIONS, RETAKE_TEST_BUTTON, START_TEST_BUTTON, TEST_QUESTIONS } from "../utils/constants";
+import { buildCissResultInterpretation, formatScoreWithBallWord } from "../utils/ciss";
 import { buildDoctorsGroupMessage } from "../utils/formatters";
 
 function getTelegramId(ctx: Context): number | null {
@@ -22,6 +23,9 @@ function buildAnswerKeyboard(questionIndex: number, selectedScore?: number) {
 }
 
 export async function sendMainMenu(ctx: Context): Promise<void> {
+  await ctx.reply(
+    "CISS является скрининговым опросником и не заменяет полноценное клиническое обследование. Окончательная интерпретация результата проводится специалистом с учетом жалоб, клинических данных и результатов функциональной диагностики."
+  );
   await ctx.reply(
     "Пожалуйста, ответьте на вопросы о самочувствии глаз при чтении и работе вблизи. (Нажмите «пройти тест» ниже).",
     Markup.keyboard([[START_TEST_BUTTON]]).resize()
@@ -174,7 +178,9 @@ export async function handleAnswerCallback(ctx: Context, scoreRaw: string): Prom
   resetTestProgress(telegramId, UserState.READY_FOR_TEST);
 
   await ctx.answerCbQuery("Ответ принят");
-  await ctx.reply(`Спасибо за прохождение теста! Вы набрали ${total} баллов.`);
+  const interpretation = buildCissResultInterpretation(total, profile.birthDate);
+  await ctx.reply(`Спасибо за прохождение теста!.`);
+  await ctx.reply(interpretation);
   await sendRetakeMenu(ctx);
 
   const report = buildDoctorsGroupMessage({
